@@ -817,3 +817,215 @@ class TestCandidateShortlist:
         response = self.client.post('/api/employer/shortlist', data, format='json')
         
         assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+class TestApplicationReview:
+    def setup_method(self):
+        from jobs.application_models import JobApplication
+        self.client = APIClient()
+
+        self.admin_user = User.objects.create_user(
+            email='admin@example.com',
+            username='admin@example.com',
+            password='SecurePass123'
+        )
+        self.recruiter_user = User.objects.create_user(
+            email='recruiter@example.com',
+            username='recruiter@example.com',
+            password='SecurePass123'
+        )
+        self.viewer_user = User.objects.create_user(
+            email='viewer@example.com',
+            username='viewer@example.com',
+            password='SecurePass123'
+        )
+        self.employer = Employer.objects.create(
+            name='TechCorp',
+            location='Johannesburg'
+        )
+        EmployerUser.objects.create(user=self.admin_user, employer=self.employer, role='admin')
+        EmployerUser.objects.create(user=self.recruiter_user, employer=self.employer, role='recruiter')
+        EmployerUser.objects.create(user=self.viewer_user, employer=self.employer, role='viewer')
+
+        self.admin_token = SessionToken.objects.create(
+            user=self.admin_user,
+            token='admin-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+        self.recruiter_token = SessionToken.objects.create(
+            user=self.recruiter_user,
+            token='recruiter-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+        self.viewer_token = SessionToken.objects.create(
+            user=self.viewer_user,
+            token='viewer-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.job = Job.objects.create(
+            employer=self.employer,
+            title='Senior Python Developer',
+            description='We are looking for a senior Python developer',
+            location='Johannesburg',
+            salary_min=150000,
+            salary_max=250000,
+            experience_level='senior',
+            status='published'
+        )
+
+        self.candidate_user = User.objects.create_user(
+            email='candidate@example.com',
+            username='candidate@example.com',
+            password='SecurePass123'
+        )
+        self.candidate = CandidateProfile.objects.create(
+            user=self.candidate_user,
+            first_name='John',
+            last_name='Doe',
+            location='Johannesburg',
+            status='active'
+        )
+
+        self.application = JobApplication.objects.create(
+            candidate=self.candidate,
+            job=self.job,
+            cover_letter='I am interested in this position.'
+        )
+
+    def test_list_applications_as_recruiter(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get('/api/employer/applications')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['candidate_first_name'] == 'John'
+        assert response.data['results'][0]['job_title'] == 'Senior Python Developer'
+
+    def test_list_applications_as_viewer_denied(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer viewer-token')
+        response = self.client.get('/api/employer/applications')
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_filter_applications_by_status(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get('/api/employer/applications?status=applied')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['status'] == 'applied'
+
+    def test_filter_applications_by_job_id(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get(f'/api/employer/applications?job_id={self.job.id}')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+
+    def test_get_application_detail(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get(f'/api/employer/applications/{self.application.id}')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['candidate_first_name'] == 'John'
+        assert response.data['candidate_last_name'] == 'Doe'
+        assert response.data['job_title'] == 'Senior Python Developer'
+        assert response.data['cover_letter'] == 'I am interested in this position.'
+
+    def test_review_application(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        data = {
+            'status': 'reviewed'
+        }
+        response = self.client.patch(f'/api/employer/applications/{self.application.id}', data, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 'reviewed'
+        self.application.refresh_from_db()
+        assert self.application.status == 'reviewed'
+        assert self.application.reviewed_at is not None
+
+    def test_reject_application_with_reason(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        data = {
+            'status': 'rejected',
+            'rejection_reason': 'Does not meet experience requirements'
+        }
+        response = self.client.patch(f'/api/employer/applications/{self.application.id}', data, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 'rejected'
+        self.application.refresh_from_db()
+        assert self.application.status == 'rejected'
+
+    def test_reject_without_reason_denied(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        data = {
+            'status': 'rejected'
+        }
+        response = self.client.patch(f'/api/employer/applications/{self.application.id}', data, format='json')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_review_as_viewer_denied(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer viewer-token')
+        data = {
+            'status': 'reviewed'
+        }
+        response = self.client.patch(f'/api/employer/applications/{self.application.id}', data, format='json')
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_cannot_review_other_employer_application(self):
+        other_employer = Employer.objects.create(
+            name='OtherCorp',
+            location='Cape Town'
+        )
+        other_job = Job.objects.create(
+            employer=other_employer,
+            title='React Developer',
+            description='Looking for React dev',
+            location='Cape Town',
+            salary_min=100000,
+            salary_max=200000,
+            experience_level='mid',
+            status='published'
+        )
+        other_application = JobApplication.objects.create(
+            candidate=self.candidate,
+            job=other_job
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        data = {
+            'status': 'reviewed'
+        }
+        response = self.client.patch(f'/api/employer/applications/{other_application.id}', data, format='json')
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_pagination(self):
+        from jobs.application_models import JobApplication
+        for i in range(25):
+            Job.objects.create(
+                employer=self.employer,
+                title=f'Job {i}',
+                description='Test',
+                location='Johannesburg',
+                salary_min=100000,
+                salary_max=200000,
+                experience_level='mid',
+                status='published'
+            )
+        for job in Job.objects.all()[1:26]:
+            JobApplication.objects.create(candidate=self.candidate, job=job)
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get('/api/employer/applications?page=1')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['results']) == 20
+        assert response.data['page'] == 1
+        assert response.data['count'] >= 25
