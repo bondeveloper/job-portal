@@ -677,3 +677,143 @@ class TestCandidateSearch:
         assert response.status_code == status.HTTP_200_OK
         assert response.data['page'] == 1
         assert response.data['page_size'] == 20
+
+
+@pytest.mark.django_db
+class TestCandidateShortlist:
+    def setup_method(self):
+        from employers.shortlist_models import CandidateShortlist
+        from profiles.models import CandidateProfile
+        self.client = APIClient()
+        
+        self.admin_user = User.objects.create_user(
+            email='admin@example.com',
+            username='admin@example.com',
+            password='SecurePass123'
+        )
+        self.recruiter_user = User.objects.create_user(
+            email='recruiter@example.com',
+            username='recruiter@example.com',
+            password='SecurePass123'
+        )
+        self.employer = Employer.objects.create(
+            name='TechCorp',
+            location='Johannesburg'
+        )
+        EmployerUser.objects.create(user=self.admin_user, employer=self.employer, role='admin')
+        EmployerUser.objects.create(user=self.recruiter_user, employer=self.employer, role='recruiter')
+
+        self.admin_token = SessionToken.objects.create(
+            user=self.admin_user,
+            token='admin-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+        self.recruiter_token = SessionToken.objects.create(
+            user=self.recruiter_user,
+            token='recruiter-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.candidate1_user = User.objects.create_user(
+            email='candidate1@example.com',
+            username='candidate1@example.com',
+            password='SecurePass123'
+        )
+        self.candidate1 = CandidateProfile.objects.create(
+            user=self.candidate1_user,
+            first_name='John',
+            last_name='Doe',
+            location='Johannesburg',
+            status='active'
+        )
+
+        self.candidate2_user = User.objects.create_user(
+            email='candidate2@example.com',
+            username='candidate2@example.com',
+            password='SecurePass123'
+        )
+        self.candidate2 = CandidateProfile.objects.create(
+            user=self.candidate2_user,
+            first_name='Jane',
+            last_name='Smith',
+            location='Cape Town',
+            status='active'
+        )
+
+    def test_add_candidate_to_shortlist(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        data = {
+            'candidate_id': self.candidate1.id
+        }
+        response = self.client.post('/api/employer/shortlist', data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['first_name'] == 'John'
+        from employers.shortlist_models import CandidateShortlist
+        assert CandidateShortlist.objects.filter(
+            employer=self.employer,
+            candidate=self.candidate1
+        ).exists()
+
+    def test_add_duplicate_to_shortlist(self):
+        from employers.shortlist_models import CandidateShortlist
+        CandidateShortlist.objects.create(
+            employer=self.employer,
+            candidate=self.candidate1
+        )
+        
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        data = {
+            'candidate_id': self.candidate1.id
+        }
+        response = self.client.post('/api/employer/shortlist', data, format='json')
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'already shortlisted' in str(response.data)
+
+    def test_list_shortlist(self):
+        from employers.shortlist_models import CandidateShortlist
+        CandidateShortlist.objects.create(employer=self.employer, candidate=self.candidate1)
+        CandidateShortlist.objects.create(employer=self.employer, candidate=self.candidate2)
+        
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer admin-token')
+        response = self.client.get('/api/employer/shortlist')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 2
+        assert response.data[0]['first_name'] in ['John', 'Jane']
+
+    def test_remove_from_shortlist(self):
+        from employers.shortlist_models import CandidateShortlist
+        shortlist = CandidateShortlist.objects.create(
+            employer=self.employer,
+            candidate=self.candidate1
+        )
+        
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.delete(f'/api/employer/shortlist/{shortlist.id}')
+        
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not CandidateShortlist.objects.filter(id=shortlist.id).exists()
+
+    def test_shortlist_requires_recruiter_role(self):
+        from employers.shortlist_models import CandidateShortlist
+        viewer_user = User.objects.create_user(
+            email='viewer@example.com',
+            username='viewer@example.com',
+            password='SecurePass123'
+        )
+        EmployerUser.objects.create(user=viewer_user, employer=self.employer, role='viewer')
+        viewer_token = SessionToken.objects.create(
+            user=viewer_user,
+            token='viewer-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+        
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer viewer-token')
+        data = {
+            'candidate_id': self.candidate1.id
+        }
+        response = self.client.post('/api/employer/shortlist', data, format='json')
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
