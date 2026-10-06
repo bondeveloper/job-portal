@@ -526,3 +526,154 @@ class TestJobManagement:
         response = self.client.post('/api/employer/jobs/9999/publish')
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+class TestCandidateSearch:
+    def setup_method(self):
+        from profiles.models import CandidateProfile
+        from profiles.availability_models import Availability
+        self.client = APIClient()
+        
+        self.employer_user = User.objects.create_user(
+            email='employer@example.com',
+            username='employer@example.com',
+            password='SecurePass123'
+        )
+        self.employer = Employer.objects.create(
+            name='TechCorp',
+            location='Johannesburg'
+        )
+        self.employer_recruiter = EmployerUser.objects.create(
+            user=self.employer_user,
+            employer=self.employer,
+            role='recruiter'
+        )
+        self.employer_token = SessionToken.objects.create(
+            user=self.employer_user,
+            token='employer-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.python_skill = Skill.objects.create(name='Python')
+        self.react_skill = Skill.objects.create(name='React')
+
+        self.candidate1_user = User.objects.create_user(
+            email='candidate1@example.com',
+            username='candidate1@example.com',
+            password='SecurePass123'
+        )
+        self.candidate1 = CandidateProfile.objects.create(
+            user=self.candidate1_user,
+            first_name='John',
+            last_name='Doe',
+            location='Johannesburg',
+            phone='0721234567',
+            status='active'
+        )
+        self.candidate1.skills.add(self.python_skill)
+        Availability.objects.create(
+            profile=self.candidate1,
+            available_from_month=1,
+            available_from_year=2026,
+            employment_type='full-time',
+            salary_min=100000,
+            salary_max=200000
+        )
+
+        self.candidate2_user = User.objects.create_user(
+            email='candidate2@example.com',
+            username='candidate2@example.com',
+            password='SecurePass123'
+        )
+        self.candidate2 = CandidateProfile.objects.create(
+            user=self.candidate2_user,
+            first_name='Jane',
+            last_name='Smith',
+            location='Cape Town',
+            phone='0729876543',
+            status='active'
+        )
+        self.candidate2.skills.add(self.react_skill)
+        Availability.objects.create(
+            profile=self.candidate2,
+            available_from_month=2,
+            available_from_year=2026,
+            employment_type='contract',
+            salary_min=80000,
+            salary_max=150000
+        )
+
+        self.paused_candidate_user = User.objects.create_user(
+            email='paused@example.com',
+            username='paused@example.com',
+            password='SecurePass123'
+        )
+        self.paused_candidate = CandidateProfile.objects.create(
+            user=self.paused_candidate_user,
+            first_name='Bob',
+            last_name='Johnson',
+            location='Johannesburg',
+            status='paused'
+        )
+
+    def test_search_all_active_candidates(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer employer-token')
+        response = self.client.get('/api/employer/candidates/search')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 2
+        assert len(response.data['results']) == 2
+
+    def test_search_candidates_by_location(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer employer-token')
+        response = self.client.get('/api/employer/candidates/search?location=Cape+Town')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['first_name'] == 'Jane'
+
+    def test_search_candidates_by_skills(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer employer-token')
+        response = self.client.get(f'/api/employer/candidates/search?skills={self.python_skill.id}')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['first_name'] == 'John'
+
+    def test_search_candidates_by_salary_range(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer employer-token')
+        response = self.client.get('/api/employer/candidates/search?salary_min=90000&salary_max=180000')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['first_name'] == 'Jane'
+
+    def test_search_candidates_by_employment_type(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer employer-token')
+        response = self.client.get('/api/employer/candidates/search?employment_type=contract')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['first_name'] == 'Jane'
+
+    def test_paused_candidates_not_visible(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer employer-token')
+        response = self.client.get('/api/employer/candidates/search')
+        
+        assert response.status_code == status.HTTP_200_OK
+        names = [c['first_name'] for c in response.data['results']]
+        assert 'Bob' not in names
+
+    def test_search_requires_authentication(self):
+        response = self.client.get('/api/employer/candidates/search')
+        
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_search_pagination(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer employer-token')
+        response = self.client.get('/api/employer/candidates/search?page=1')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['page'] == 1
+        assert response.data['page_size'] == 20

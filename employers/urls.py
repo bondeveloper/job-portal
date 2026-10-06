@@ -3,6 +3,7 @@ from .views import EmployerRegisterView, EmployerProfileView
 from .team_views import TeamMembersListView, TeamMemberDetailView
 from .job_views import JobListCreateView, JobDetailView
 from .job_management_views import JobPublishView, JobCloseView, JobUnpublishView, JobMetricsView
+from .candidate_search_views import CandidateSearchView
 
 urlpatterns = [
     path('register', EmployerRegisterView.as_view(), name='employer-register'),
@@ -18,4 +19,5 @@ urlpatterns += [
     path('jobs/<int:job_id>/close', JobCloseView.as_view(), name='job-close'),
     path('jobs/<int:job_id>/unpublish', JobUnpublishView.as_view(), name='job-unpublish'),
     path('jobs/<int:job_id>/metrics', JobMetricsView.as_view(), name='job-metrics'),
+    path('candidates/search', CandidateSearchView.as_view(), name='candidate-search'),
 ]
