@@ -2,6 +2,7 @@ from django.urls import path
 from .views import EmployerRegisterView, EmployerProfileView
 from .team_views import TeamMembersListView, TeamMemberDetailView
 from .job_views import JobListCreateView, JobDetailView
+from .job_management_views import JobPublishView, JobCloseView, JobUnpublishView, JobMetricsView
 
 urlpatterns = [
     path('register', EmployerRegisterView.as_view(), name='employer-register'),
@@ -13,4 +14,8 @@ urlpatterns = [
 urlpatterns += [
     path('jobs', JobListCreateView.as_view(), name='job-list-create'),
     path('jobs/<int:job_id>', JobDetailView.as_view(), name='job-detail'),
+    path('jobs/<int:job_id>/publish', JobPublishView.as_view(), name='job-publish'),
+    path('jobs/<int:job_id>/close', JobCloseView.as_view(), name='job-close'),
+    path('jobs/<int:job_id>/unpublish', JobUnpublishView.as_view(), name='job-unpublish'),
+    path('jobs/<int:job_id>/metrics', JobMetricsView.as_view(), name='job-metrics'),
 ]

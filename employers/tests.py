@@ -410,3 +410,119 @@ class TestJobPosting:
         assert response.status_code == status.HTTP_200_OK
         assert response.data['title'] == 'Senior Python Developer'
         assert response.data['salary_min'] == 150000
+
+
+@pytest.mark.django_db
+class TestJobManagement:
+    def setup_method(self):
+        from .job_models import Job
+        self.client = APIClient()
+        self.admin_user = User.objects.create_user(
+            email='admin@example.com',
+            username='admin@example.com',
+            password='SecurePass123'
+        )
+        self.recruiter_user = User.objects.create_user(
+            email='recruiter@example.com',
+            username='recruiter@example.com',
+            password='SecurePass123'
+        )
+        self.viewer_user = User.objects.create_user(
+            email='viewer@example.com',
+            username='viewer@example.com',
+            password='SecurePass123'
+        )
+        self.employer = Employer.objects.create(
+            name='TechCorp',
+            location='Johannesburg'
+        )
+        EmployerUser.objects.create(user=self.admin_user, employer=self.employer, role='admin')
+        EmployerUser.objects.create(user=self.recruiter_user, employer=self.employer, role='recruiter')
+        EmployerUser.objects.create(user=self.viewer_user, employer=self.employer, role='viewer')
+
+        self.admin_token = SessionToken.objects.create(
+            user=self.admin_user,
+            token='admin-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+        self.recruiter_token = SessionToken.objects.create(
+            user=self.recruiter_user,
+            token='recruiter-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+        self.viewer_token = SessionToken.objects.create(
+            user=self.viewer_user,
+            token='viewer-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.job = Job.objects.create(
+            employer=self.employer,
+            title='Python Developer',
+            description='Looking for a Python dev',
+            location='Johannesburg',
+            salary_min=100000,
+            salary_max=200000,
+            experience_level='mid',
+            status='draft'
+        )
+
+    def test_publish_job(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.post(f'/api/employer/jobs/{self.job.id}/publish')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 'published'
+        self.job.refresh_from_db()
+        assert self.job.status == 'published'
+
+    def test_publish_job_as_viewer_denied(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer viewer-token')
+        response = self.client.post(f'/api/employer/jobs/{self.job.id}/publish')
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_close_job(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer admin-token')
+        response = self.client.post(f'/api/employer/jobs/{self.job.id}/close')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 'closed'
+        self.job.refresh_from_db()
+        assert self.job.status == 'closed'
+
+    def test_unpublish_job(self):
+        from .job_models import Job
+        job = Job.objects.create(
+            employer=self.employer,
+            title='React Developer',
+            description='Looking for React dev',
+            location='Johannesburg',
+            salary_min=100000,
+            salary_max=200000,
+            experience_level='mid',
+            status='published'
+        )
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.post(f'/api/employer/jobs/{job.id}/unpublish')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 'draft'
+        job.refresh_from_db()
+        assert job.status == 'draft'
+
+    def test_get_job_metrics(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer admin-token')
+        response = self.client.get(f'/api/employer/jobs/{self.job.id}/metrics')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['job_id'] == self.job.id
+        assert response.data['title'] == 'Python Developer'
+        assert 'applications_count' in response.data
+        assert 'views_count' in response.data
+
+    def test_publish_nonexistent_job(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer admin-token')
+        response = self.client.post('/api/employer/jobs/9999/publish')
+        
+        assert response.status_code == status.HTTP_404_NOT_FOUND
