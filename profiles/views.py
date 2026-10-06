@@ -16,17 +16,23 @@ class CandidateProfileView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def get(self, request):
+
+class CandidateProfileDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
         try:
-            profile = CandidateProfile.objects.get(user=request.user)
+            profile = CandidateProfile.objects.get(pk=pk)
             serializer = CandidateProfileSerializer(profile)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except CandidateProfile.DoesNotExist:
             return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    def patch(self, request):
+    def patch(self, request, pk):
         try:
-            profile = CandidateProfile.objects.get(user=request.user)
+            profile = CandidateProfile.objects.get(pk=pk)
+            if profile.user != request.user:
+                return Response({'error': 'You can only update your own profile'}, status=status.HTTP_403_FORBIDDEN)
             serializer = CandidateProfileSerializer(profile, data=request.data, partial=True)
             if serializer.is_valid():
                 profile = serializer.save()

@@ -8,7 +8,7 @@ from .models import CandidateProfile
 class TestCandidateProfileCreation:
     def setup_method(self):
         self.client = APIClient()
-        self.profile_url = '/api/profiles'
+        self.create_url = '/api/profiles'
         self.user = User.objects.create_user(
             username='candidate@example.com',
             email='candidate@example.com',
@@ -19,7 +19,7 @@ class TestCandidateProfileCreation:
         self.client.force_authenticate(user=self.user)
 
     def test_create_profile_success(self):
-        response = self.client.post(self.profile_url, {
+        response = self.client.post(self.create_url, {
             'first_name': 'John',
             'last_name': 'Doe',
             'phone': '0123456789',
@@ -35,7 +35,7 @@ class TestCandidateProfileCreation:
         assert CandidateProfile.objects.filter(user=self.user).exists()
 
     def test_create_profile_without_phone(self):
-        response = self.client.post(self.profile_url, {
+        response = self.client.post(self.create_url, {
             'first_name': 'Jane',
             'last_name': 'Smith',
             'location': 'Cape Town',
@@ -45,7 +45,7 @@ class TestCandidateProfileCreation:
         assert response.data['phone'] is None
 
     def test_create_profile_missing_required_field(self):
-        response = self.client.post(self.profile_url, {
+        response = self.client.post(self.create_url, {
             'first_name': 'John',
             'last_name': 'Doe',
         })
@@ -53,7 +53,7 @@ class TestCandidateProfileCreation:
         assert 'location' in response.data
 
     def test_create_profile_empty_first_name(self):
-        response = self.client.post(self.profile_url, {
+        response = self.client.post(self.create_url, {
             'first_name': '   ',
             'last_name': 'Doe',
             'location': 'Johannesburg',
@@ -63,7 +63,7 @@ class TestCandidateProfileCreation:
 
     def test_create_profile_unauthenticated(self):
         self.client.force_authenticate(user=None)
-        response = self.client.post(self.profile_url, {
+        response = self.client.post(self.create_url, {
             'first_name': 'John',
             'last_name': 'Doe',
             'location': 'Johannesburg',
@@ -75,7 +75,6 @@ class TestCandidateProfileCreation:
 class TestCandidateProfileRetrieval:
     def setup_method(self):
         self.client = APIClient()
-        self.profile_url = '/api/profiles'
         self.user = User.objects.create_user(
             username='candidate@example.com',
             email='candidate@example.com',
@@ -90,10 +89,11 @@ class TestCandidateProfileRetrieval:
             phone='0123456789',
             location='Johannesburg'
         )
+        self.detail_url = f'/api/profiles/{self.profile.id}'
         self.client.force_authenticate(user=self.user)
 
     def test_get_profile_success(self):
-        response = self.client.get(self.profile_url)
+        response = self.client.get(self.detail_url)
         assert response.status_code == 200
         assert response.data['first_name'] == 'John'
         assert response.data['last_name'] == 'Doe'
@@ -101,24 +101,28 @@ class TestCandidateProfileRetrieval:
         assert response.data['status'] == 'pending'
 
     def test_get_profile_not_found(self):
-        new_user = User.objects.create_user(
-            username='other@example.com',
-            email='other@example.com',
-            password='password123'
-        )
-        new_user.is_active = True
-        new_user.save()
-        self.client.force_authenticate(user=new_user)
-        response = self.client.get(self.profile_url)
+        response = self.client.get('/api/profiles/99999')
         assert response.status_code == 404
         assert 'Profile not found' in str(response.data)
+
+    def test_get_profile_employer_viewing(self):
+        other_user = User.objects.create_user(
+            username='employer@example.com',
+            email='employer@example.com',
+            password='password123'
+        )
+        other_user.is_active = True
+        other_user.save()
+        self.client.force_authenticate(user=other_user)
+        response = self.client.get(self.detail_url)
+        assert response.status_code == 200
+        assert response.data['first_name'] == 'John'
 
 
 @pytest.mark.django_db
 class TestCandidateProfileUpdate:
     def setup_method(self):
         self.client = APIClient()
-        self.profile_url = '/api/profiles'
         self.user = User.objects.create_user(
             username='candidate@example.com',
             email='candidate@example.com',
@@ -133,10 +137,11 @@ class TestCandidateProfileUpdate:
             phone='0123456789',
             location='Johannesburg'
         )
+        self.detail_url = f'/api/profiles/{self.profile.id}'
         self.client.force_authenticate(user=self.user)
 
     def test_update_profile_partial(self):
-        response = self.client.patch(self.profile_url, {
+        response = self.client.patch(self.detail_url, {
             'location': 'Cape Town',
         })
         assert response.status_code == 200
@@ -146,7 +151,7 @@ class TestCandidateProfileUpdate:
         assert self.profile.location == 'Cape Town'
 
     def test_update_profile_full(self):
-        response = self.client.patch(self.profile_url, {
+        response = self.client.patch(self.detail_url, {
             'first_name': 'Jane',
             'last_name': 'Smith',
             'phone': '9876543210',
@@ -159,29 +164,36 @@ class TestCandidateProfileUpdate:
         assert response.data['location'] == 'Pretoria'
 
     def test_update_profile_email_readonly(self):
-        response = self.client.patch(self.profile_url, {
+        response = self.client.patch(self.detail_url, {
             'email': 'newemail@example.com',
         })
         assert response.status_code == 200
         assert response.data['email'] == 'candidate@example.com'
 
     def test_update_profile_invalid_location(self):
-        response = self.client.patch(self.profile_url, {
+        response = self.client.patch(self.detail_url, {
             'location': '   ',
         })
         assert response.status_code == 400
         assert 'location' in response.data
 
-    def test_update_profile_not_found(self):
-        new_user = User.objects.create_user(
+    def test_update_profile_not_own_profile(self):
+        other_user = User.objects.create_user(
             username='other@example.com',
             email='other@example.com',
             password='password123'
         )
-        new_user.is_active = True
-        new_user.save()
-        self.client.force_authenticate(user=new_user)
-        response = self.client.patch(self.profile_url, {
+        other_user.is_active = True
+        other_user.save()
+        self.client.force_authenticate(user=other_user)
+        response = self.client.patch(self.detail_url, {
+            'location': 'Durban',
+        })
+        assert response.status_code == 403
+        assert 'You can only update your own profile' in str(response.data)
+
+    def test_update_profile_not_found(self):
+        response = self.client.patch('/api/profiles/99999', {
             'location': 'Durban',
         })
         assert response.status_code == 404
