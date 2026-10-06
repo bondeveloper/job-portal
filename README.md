@@ -1,75 +1,111 @@
 # Job Portal
 
-A recruitment platform connecting candidates with employers in the South African market.
+A production-ready recruitment platform connecting candidates with employers in the UK market. Commission-based hiring with mutual confirmation workflows.
 
 ## Tech Stack
 
-- **Backend**: Django 4.2 + Django REST Framework
-- **Database**: PostgreSQL
-- **Frontend**: Vue.js or React (coming soon)
-- **Testing**: pytest + pytest-django
+- **Backend**: Django 4.2 + Django REST Framework + PostgreSQL
+- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
+- **Testing**: pytest + pytest-django (backend), Vitest (frontend)
+
+## Project Structure
+
+```
+job-portal/
+├── backend/                 # Django REST API
+│   ├── config/
+│   ├── accounts/
+│   ├── employers/
+│   ├── jobs/
+│   ├── profiles/
+│   ├── manage.py
+│   └── requirements.txt
+├── frontend/                # React + TypeScript
+│   ├── src/
+│   ├── package.json
+│   └── vite.config.ts
+├── docs/
+│   └── adr/
+├── CONTEXT.md              # Domain model glossary
+└── docker-compose.yml
+```
 
 ## Setup
 
 ### Option 1: Docker (Recommended)
 
-For a quick setup with Docker, see [Docker Setup Guide](docs/DOCKER.md).
-
-**Quick start:**
+For a quick setup with Docker:
 ```bash
 docker-compose up --build
 ```
 
-The application will be available at `http://localhost:8000`
+Backend available at: `http://localhost:8000`
+Frontend available at: `http://localhost:3000`
 
 ### Option 2: Local Development
 
 #### Prerequisites
 
 - Python 3.11+
+- Node.js 18+
 - PostgreSQL 13+
-- pip/venv
 
-#### Installation
+#### Backend Setup
 
-1. Clone the repository and navigate to the project directory:
-```bash
-cd job-portal
-```
-
-2. Create a virtual environment:
+1. Create a Python virtual environment:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-3. Install dependencies:
+2. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Create a `.env` file (copy from `.env.example`):
+3. Create a `.env` file:
 ```bash
 cp .env.example .env
 ```
 
-5. Update `.env` with your PostgreSQL credentials and other settings.
-
-6. Run migrations:
+4. Run migrations:
 ```bash
-python manage.py makemigrations
 python manage.py migrate
 ```
 
-7. Create a superuser:
+5. Create a superuser:
 ```bash
 python manage.py createsuperuser
 ```
 
-8. Run the development server:
+6. Run the backend server (runs on http://localhost:8000):
 ```bash
 python manage.py runserver
 ```
+
+#### Frontend Setup
+
+1. Navigate to the frontend directory:
+```bash
+cd frontend
+```
+
+2. Install Node dependencies:
+```bash
+npm install
+```
+
+3. Create a `.env` file:
+```bash
+cp .env.example .env
+```
+
+4. Run the development server (runs on http://localhost:3000):
+```bash
+npm run dev
+```
+
+The frontend is configured to proxy API requests to the backend at `http://localhost:8000/api`.
 
 ## Running Tests
 
