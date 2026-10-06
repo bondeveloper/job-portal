@@ -52,36 +52,45 @@ Frontend available at: `http://localhost:3000`
 
 #### Backend Setup
 
-1. Create a Python virtual environment:
+1. Navigate to the backend directory:
+```bash
+cd backend
+```
+
+2. Create a Python virtual environment:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-2. Install Python dependencies:
+3. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Create a `.env` file:
+4. Create a `.env` file:
 ```bash
 cp .env.example .env
 ```
 
-4. Run migrations:
+5. Update `.env` with PostgreSQL credentials if needed.
+
+6. Run migrations:
 ```bash
 python manage.py migrate
 ```
 
-5. Create a superuser:
+7. Create a superuser:
 ```bash
 python manage.py createsuperuser
 ```
 
-6. Run the backend server (runs on http://localhost:8000):
+8. Run the backend server (http://localhost:8000):
 ```bash
 python manage.py runserver
 ```
+
+See [backend/README.md](backend/README.md) for more details.
 
 #### Frontend Setup
 
@@ -100,12 +109,14 @@ npm install
 cp .env.example .env
 ```
 
-4. Run the development server (runs on http://localhost:3000):
+4. Run the development server (http://localhost:3000):
 ```bash
 npm run dev
 ```
 
-The frontend is configured to proxy API requests to the backend at `http://localhost:8000/api`.
+The frontend proxies API requests to `http://localhost:8000/api`.
+
+See [frontend/README.md](frontend/README.md) for more details.
 
 ## Running Tests
 

@@ -19,13 +19,13 @@ services:
       retries: 5
 
   web:
-    build: .
+    build: ./backend
     container_name: job_portal_app
     command: >
       sh -c "python manage.py migrate &&
              gunicorn --bind 0.0.0.0:8000 --workers 4 config.wsgi"
     volumes:
-      - .:/app
+      - ./backend:/app
     ports:
       - "8000:8000"
     environment:
