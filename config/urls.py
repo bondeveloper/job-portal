@@ -4,6 +4,7 @@ from profiles.skill_views import SkillListView, CandidateSkillView
 from profiles.work_history_views import WorkHistoryListView, WorkHistoryDetailView
 from profiles.availability_views import AvailabilityView
 from profiles.profile_status_views import ProfileStatusView
+from profiles.profile_lifecycle_views import ProfilePauseView, ProfileUnpauseView, ProfileDeleteView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -15,4 +16,7 @@ urlpatterns = [
     path('api/profiles/<int:pk>/work-history/<int:work_history_id>', WorkHistoryDetailView.as_view(), name='work-history-detail'),
     path('api/profiles/<int:pk>/availability', AvailabilityView.as_view(), name='availability'),
     path('api/profiles/<int:pk>/status', ProfileStatusView.as_view(), name='profile-status'),
+    path('api/profiles/<int:pk>/pause', ProfilePauseView.as_view(), name='profile-pause'),
+    path('api/profiles/<int:pk>/unpause', ProfileUnpauseView.as_view(), name='profile-unpause'),
+    path('api/profiles/<int:pk>/delete', ProfileDeleteView.as_view(), name='profile-delete'),
 ]
