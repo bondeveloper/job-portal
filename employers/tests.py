@@ -1666,3 +1666,229 @@ class TestInvoiceGeneration:
         response = self.client.post('/api/employer/invoices')
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+class TestPaymentProcessing:
+    def setup_method(self):
+        from jobs.application_models import JobApplication
+        from jobs.hire_confirmation_models import HireConfirmation
+        from employers.invoice_models import Invoice
+        self.client = APIClient()
+
+        self.recruiter_user = User.objects.create_user(
+            email='recruiter@example.com',
+            username='recruiter@example.com',
+            password='SecurePass123'
+        )
+        self.employer = Employer.objects.create(
+            name='TechCorp',
+            location='Johannesburg'
+        )
+        EmployerUser.objects.create(user=self.recruiter_user, employer=self.employer, role='recruiter')
+
+        self.recruiter_token = SessionToken.objects.create(
+            user=self.recruiter_user,
+            token='recruiter-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.job = Job.objects.create(
+            employer=self.employer,
+            title='Senior Python Developer',
+            description='Looking for senior Python dev',
+            location='Johannesburg',
+            salary_min=150000,
+            salary_max=250000,
+            experience_level='senior',
+            status='published'
+        )
+
+        self.candidate_user = User.objects.create_user(
+            email='candidate@example.com',
+            username='candidate@example.com',
+            password='SecurePass123'
+        )
+        self.candidate = CandidateProfile.objects.create(
+            user=self.candidate_user,
+            first_name='John',
+            last_name='Doe',
+            location='Johannesburg',
+            status='active'
+        )
+
+        self.application = JobApplication.objects.create(
+            candidate=self.candidate,
+            job=self.job,
+            cover_letter='Interested'
+        )
+
+        self.hire = HireConfirmation.objects.create(
+            application=self.application,
+            employer_confirmed=True,
+            status='confirmed'
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.post('/api/employer/invoices')
+        self.invoice_id = response.data['id']
+
+    def test_initiate_payment(self):
+        from employers.payment_models import Payment
+        data = {
+            'payment_method': 'credit_card'
+        }
+        response = self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['status'] == 'pending'
+        assert response.data['amount'] == 15000.00
+        assert response.data['payment_url'] is not None
+        assert Payment.objects.filter(invoice_id=self.invoice_id).exists()
+
+    def test_payment_has_reference(self):
+        data = {
+            'payment_method': 'credit_card'
+        }
+        response = self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['payment_reference'].startswith('PAY-')
+
+    def test_payment_callback_success(self):
+        from employers.payment_models import Payment
+        from employers.invoice_models import Invoice
+        
+        data = {'payment_method': 'credit_card'}
+        payment_response = self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+        payment_reference = payment_response.data['payment_reference']
+
+        callback_data = {
+            'payment_reference': payment_reference,
+            'status': 'completed'
+        }
+        callback_response = self.client.post('/api/webhooks/payment-callback', callback_data, format='json')
+
+        assert callback_response.status_code == status.HTTP_200_OK
+        
+        payment = Payment.objects.get(payment_reference=payment_reference)
+        assert payment.status == 'completed'
+        assert payment.completed_at is not None
+
+    def test_invoice_status_updated_on_payment(self):
+        from employers.invoice_models import Invoice
+        data = {'payment_method': 'credit_card'}
+        payment_response = self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+        payment_reference = payment_response.data['payment_reference']
+
+        callback_data = {
+            'payment_reference': payment_reference,
+            'status': 'completed'
+        }
+        self.client.post('/api/webhooks/payment-callback', callback_data, format='json')
+
+        invoice = Invoice.objects.get(id=self.invoice_id)
+        assert invoice.status == 'paid'
+        assert invoice.paid_at is not None
+
+    def test_commission_status_updated_on_payment(self):
+        from employers.commission_models import Commission
+        data = {'payment_method': 'credit_card'}
+        payment_response = self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+        payment_reference = payment_response.data['payment_reference']
+
+        callback_data = {
+            'payment_reference': payment_reference,
+            'status': 'completed'
+        }
+        self.client.post('/api/webhooks/payment-callback', callback_data, format='json')
+
+        commission = Commission.objects.get(hire_confirmation=self.hire)
+        assert commission.status == 'paid'
+        assert commission.paid_at is not None
+
+    def test_payment_callback_failure(self):
+        from employers.payment_models import Payment
+        data = {'payment_method': 'credit_card'}
+        payment_response = self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+        payment_reference = payment_response.data['payment_reference']
+
+        callback_data = {
+            'payment_reference': payment_reference,
+            'status': 'failed'
+        }
+        callback_response = self.client.post('/api/webhooks/payment-callback', callback_data, format='json')
+
+        assert callback_response.status_code == status.HTTP_200_OK
+        
+        payment = Payment.objects.get(payment_reference=payment_reference)
+        assert payment.status == 'failed'
+
+    def test_cannot_pay_paid_invoice(self):
+        from employers.invoice_models import Invoice
+        invoice = Invoice.objects.get(id=self.invoice_id)
+        invoice.status = 'paid'
+        invoice.save()
+
+        data = {'payment_method': 'credit_card'}
+        response = self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_list_employer_payments(self):
+        data = {'payment_method': 'credit_card'}
+        self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+
+        response = self.client.get('/api/employer/payments')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['amount'] == 15000.00
+
+    def test_filter_payments_by_status(self):
+        data = {'payment_method': 'credit_card'}
+        self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+
+        response = self.client.get('/api/employer/payments?status=pending')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['status'] == 'pending'
+
+    def test_non_recruiter_cannot_initiate_payment(self):
+        viewer_user = User.objects.create_user(
+            email='viewer@example.com',
+            username='viewer@example.com',
+            password='SecurePass123'
+        )
+        EmployerUser.objects.create(user=viewer_user, employer=self.employer, role='viewer')
+        viewer_token = SessionToken.objects.create(
+            user=viewer_user,
+            token='viewer-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer viewer-token')
+        data = {'payment_method': 'credit_card'}
+        response = self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_webhook_callback_idempotent(self):
+        from employers.payment_models import Payment
+        data = {'payment_method': 'credit_card'}
+        payment_response = self.client.post(f'/api/employer/invoices/{self.invoice_id}/pay', data, format='json')
+        payment_reference = payment_response.data['payment_reference']
+
+        callback_data = {
+            'payment_reference': payment_reference,
+            'status': 'completed'
+        }
+        response1 = self.client.post('/api/webhooks/payment-callback', callback_data, format='json')
+        response2 = self.client.post('/api/webhooks/payment-callback', callback_data, format='json')
+
+        assert response1.status_code == status.HTTP_200_OK
+        assert response2.status_code == status.HTTP_200_OK
+        
+        payment = Payment.objects.get(payment_reference=payment_reference)
+        assert payment.status == 'completed'

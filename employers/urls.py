@@ -10,6 +10,7 @@ from .application_shortlist_views import ApplicationShortlistListView, Applicati
 from .hire_confirmation_views import MarkApplicationHiredView
 from .commission_views import AdminCommissionsListView, EmployerCommissionsListView
 from .invoice_views import EmployerInvoicesListView, EmployerInvoiceDetailView, AdminInvoicesListView
+from .payment_views import InitiatePaymentView, PaymentCallbackView, EmployerPaymentsListView, AdminPaymentsListView
 
 urlpatterns = [
     path('register', EmployerRegisterView.as_view(), name='employer-register'),
@@ -36,11 +37,18 @@ urlpatterns += [
     path('commissions', EmployerCommissionsListView.as_view(), name='commissions-list'),
     path('invoices', EmployerInvoicesListView.as_view(), name='invoices-list'),
     path('invoices/<int:invoice_id>', EmployerInvoiceDetailView.as_view(), name='invoice-detail'),
+    path('invoices/<int:invoice_id>/pay', InitiatePaymentView.as_view(), name='initiate-payment'),
+    path('payments', EmployerPaymentsListView.as_view(), name='payments-list'),
 ]
 
 admin_urlpatterns = [
     path('admin/commissions', AdminCommissionsListView.as_view(), name='admin-commissions-list'),
     path('admin/invoices', AdminInvoicesListView.as_view(), name='admin-invoices-list'),
+    path('admin/payments', AdminPaymentsListView.as_view(), name='admin-payments-list'),
 ]
 
-urlpatterns += admin_urlpatterns
+webhook_urlpatterns = [
+    path('webhooks/payment-callback', PaymentCallbackView.as_view(), name='payment-callback'),
+]
+
+urlpatterns += admin_urlpatterns + webhook_urlpatterns
