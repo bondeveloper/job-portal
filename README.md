@@ -11,13 +11,26 @@ A recruitment platform connecting candidates with employers in the South African
 
 ## Setup
 
-### Prerequisites
+### Option 1: Docker (Recommended)
+
+For a quick setup with Docker, see [Docker Setup Guide](docs/DOCKER.md).
+
+**Quick start:**
+```bash
+docker-compose up --build
+```
+
+The application will be available at `http://localhost:8000`
+
+### Option 2: Local Development
+
+#### Prerequisites
 
 - Python 3.11+
 - PostgreSQL 13+
 - pip/venv
 
-### Installation
+#### Installation
 
 1. Clone the repository and navigate to the project directory:
 ```bash

@@ -9,6 +9,7 @@ from .application_review_views import EmployerApplicationsListView, EmployerAppl
 from .application_shortlist_views import ApplicationShortlistListView, ApplicationShortlistDetailView
 from .hire_confirmation_views import MarkApplicationHiredView
 from .commission_views import AdminCommissionsListView, EmployerCommissionsListView
+from .invoice_views import EmployerInvoicesListView, EmployerInvoiceDetailView, AdminInvoicesListView
 
 urlpatterns = [
     path('register', EmployerRegisterView.as_view(), name='employer-register'),
@@ -33,10 +34,13 @@ urlpatterns += [
     path('application-shortlist', ApplicationShortlistListView.as_view(), name='application-shortlist-list'),
     path('application-shortlist/<int:shortlist_id>', ApplicationShortlistDetailView.as_view(), name='application-shortlist-detail'),
     path('commissions', EmployerCommissionsListView.as_view(), name='commissions-list'),
+    path('invoices', EmployerInvoicesListView.as_view(), name='invoices-list'),
+    path('invoices/<int:invoice_id>', EmployerInvoiceDetailView.as_view(), name='invoice-detail'),
 ]
 
 admin_urlpatterns = [
     path('admin/commissions', AdminCommissionsListView.as_view(), name='admin-commissions-list'),
+    path('admin/invoices', AdminInvoicesListView.as_view(), name='admin-invoices-list'),
 ]
 
 urlpatterns += admin_urlpatterns

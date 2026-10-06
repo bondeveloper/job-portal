@@ -1439,3 +1439,230 @@ class TestCommissionCalculation:
 
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) >= 1
+
+
+@pytest.mark.django_db
+class TestInvoiceGeneration:
+    def setup_method(self):
+        from jobs.application_models import JobApplication
+        from jobs.hire_confirmation_models import HireConfirmation
+        from employers.commission_models import Commission
+        self.client = APIClient()
+
+        self.recruiter_user = User.objects.create_user(
+            email='recruiter@example.com',
+            username='recruiter@example.com',
+            password='SecurePass123'
+        )
+        self.employer = Employer.objects.create(
+            name='TechCorp',
+            location='Johannesburg'
+        )
+        EmployerUser.objects.create(user=self.recruiter_user, employer=self.employer, role='recruiter')
+
+        self.recruiter_token = SessionToken.objects.create(
+            user=self.recruiter_user,
+            token='recruiter-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.job = Job.objects.create(
+            employer=self.employer,
+            title='Senior Python Developer',
+            description='Looking for senior Python dev',
+            location='Johannesburg',
+            salary_min=150000,
+            salary_max=250000,
+            experience_level='senior',
+            status='published'
+        )
+
+        self.candidate_user = User.objects.create_user(
+            email='candidate@example.com',
+            username='candidate@example.com',
+            password='SecurePass123'
+        )
+        self.candidate = CandidateProfile.objects.create(
+            user=self.candidate_user,
+            first_name='John',
+            last_name='Doe',
+            location='Johannesburg',
+            status='active'
+        )
+
+        self.application = JobApplication.objects.create(
+            candidate=self.candidate,
+            job=self.job,
+            cover_letter='Interested'
+        )
+
+        self.hire = HireConfirmation.objects.create(
+            application=self.application,
+            employer_confirmed=True,
+            status='confirmed'
+        )
+
+    def test_generate_invoice_from_pending_commissions(self):
+        from employers.invoice_models import Invoice
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.post('/api/employer/invoices')
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['invoice_number'].startswith('INV-2026-')
+        assert float(response.data['total_amount']) == 15000.00
+        assert response.data['status'] == 'issued'
+        assert len(response.data['line_items']) == 1
+        assert Invoice.objects.filter(employer=self.employer).exists()
+
+    def test_invoice_has_line_items(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.post('/api/employer/invoices')
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert len(response.data['line_items']) == 1
+        line_item = response.data['line_items'][0]
+        assert 'John Doe' in line_item['candidate_name']
+        assert 'Senior Python Developer' in line_item['job_title']
+        assert float(line_item['amount']) == 15000.00
+
+    def test_commission_status_updated_on_invoice_generation(self):
+        from employers.commission_models import Commission
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        self.client.post('/api/employer/invoices')
+
+        commission = Commission.objects.get(hire_confirmation=self.hire)
+        assert commission.status == 'invoiced'
+        assert commission.invoiced_at is not None
+
+    def test_cannot_invoice_without_pending_commissions(self):
+        from employers.commission_models import Commission
+        commission = Commission.objects.get(hire_confirmation=self.hire)
+        commission.status = 'invoiced'
+        commission.save()
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.post('/api/employer/invoices')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'No pending commissions' in str(response.data)
+
+    def test_list_employer_invoices(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        self.client.post('/api/employer/invoices')
+
+        response = self.client.get('/api/employer/invoices')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['total_amount'] == 15000.00
+        assert response.data['results'][0]['status'] == 'issued'
+
+    def test_get_invoice_detail(self):
+        from employers.invoice_models import Invoice
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        self.client.post('/api/employer/invoices')
+
+        invoice = Invoice.objects.get(employer=self.employer)
+        response = self.client.get(f'/api/employer/invoices/{invoice.id}')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['invoice_number'] == invoice.invoice_number
+        assert len(response.data['line_items']) == 1
+
+    def test_invoice_number_sequential(self):
+        from employers.invoice_models import Invoice
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        
+        response1 = self.client.post('/api/employer/invoices')
+        invoice1_number = response1.data['invoice_number']
+
+        for i in range(2):
+            job = Job.objects.create(
+                employer=self.employer,
+                title=f'Job {i}',
+                description='Test',
+                location='Johannesburg',
+                salary_min=100000,
+                salary_max=200000,
+                experience_level='mid',
+                status='published'
+            )
+            app = JobApplication.objects.create(candidate=self.candidate, job=job)
+            hire = HireConfirmation.objects.create(
+                application=app,
+                employer_confirmed=True,
+                status='confirmed'
+            )
+
+        response2 = self.client.post('/api/employer/invoices')
+        invoice2_number = response2.data['invoice_number']
+
+        assert invoice1_number != invoice2_number
+        assert invoice2_number > invoice1_number
+
+    def test_invoice_due_date_net_30(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.post('/api/employer/invoices')
+
+        due_date = response.data['due_date']
+        issued_date = response.data['date_issued']
+        
+        assert due_date is not None
+        assert issued_date is not None
+
+    def test_filter_invoices_by_status(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        self.client.post('/api/employer/invoices')
+
+        response = self.client.get('/api/employer/invoices?status=issued')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+
+    def test_pagination_invoices(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        for i in range(25):
+            job = Job.objects.create(
+                employer=self.employer,
+                title=f'Job {i}',
+                description='Test',
+                location='Johannesburg',
+                salary_min=100000 + (i * 10000),
+                salary_max=200000,
+                experience_level='mid',
+                status='published'
+            )
+            app = JobApplication.objects.create(candidate=self.candidate, job=job)
+            hire = HireConfirmation.objects.create(
+                application=app,
+                employer_confirmed=True,
+                status='confirmed'
+            )
+
+        self.client.post('/api/employer/invoices')
+
+        response = self.client.get('/api/employer/invoices?page=1')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['results']) >= 1
+        assert response.data['page'] == 1
+
+    def test_non_recruiter_cannot_generate_invoice(self):
+        viewer_user = User.objects.create_user(
+            email='viewer@example.com',
+            username='viewer@example.com',
+            password='SecurePass123'
+        )
+        EmployerUser.objects.create(user=viewer_user, employer=self.employer, role='viewer')
+        viewer_token = SessionToken.objects.create(
+            user=viewer_user,
+            token='viewer-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer viewer-token')
+        response = self.client.post('/api/employer/invoices')
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
