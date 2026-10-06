@@ -1224,3 +1224,218 @@ class TestApplicationShortlist:
         assert len(response.data['results']) == 20
         assert response.data['page'] == 1
         assert response.data['count'] >= 25
+
+
+@pytest.mark.django_db
+class TestCommissionCalculation:
+    def setup_method(self):
+        from jobs.application_models import JobApplication
+        from jobs.hire_confirmation_models import HireConfirmation
+        self.client = APIClient()
+
+        self.admin_user = User.objects.create_user(
+            email='admin@example.com',
+            username='admin@example.com',
+            password='SecurePass123'
+        )
+        self.recruiter_user = User.objects.create_user(
+            email='recruiter@example.com',
+            username='recruiter@example.com',
+            password='SecurePass123'
+        )
+        self.employer = Employer.objects.create(
+            name='TechCorp',
+            location='Johannesburg'
+        )
+        EmployerUser.objects.create(user=self.admin_user, employer=self.employer, role='admin')
+        EmployerUser.objects.create(user=self.recruiter_user, employer=self.employer, role='recruiter')
+
+        self.admin_token = SessionToken.objects.create(
+            user=self.admin_user,
+            token='admin-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+        self.recruiter_token = SessionToken.objects.create(
+            user=self.recruiter_user,
+            token='recruiter-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.job = Job.objects.create(
+            employer=self.employer,
+            title='Senior Python Developer',
+            description='Looking for senior Python dev',
+            location='Johannesburg',
+            salary_min=150000,
+            salary_max=250000,
+            experience_level='senior',
+            status='published'
+        )
+
+        self.candidate_user = User.objects.create_user(
+            email='candidate@example.com',
+            username='candidate@example.com',
+            password='SecurePass123'
+        )
+        self.candidate = CandidateProfile.objects.create(
+            user=self.candidate_user,
+            first_name='John',
+            last_name='Doe',
+            location='Johannesburg',
+            status='active'
+        )
+
+        self.application = JobApplication.objects.create(
+            candidate=self.candidate,
+            job=self.job,
+            cover_letter='Interested in this role'
+        )
+
+        self.hire_confirmation = HireConfirmation.objects.create(
+            application=self.application,
+            employer_confirmed=True,
+            status='pending_candidate'
+        )
+
+    def test_commission_auto_created_on_hire(self):
+        from employers.commission_models import Commission
+        self.hire_confirmation.candidate_confirmed = True
+        self.hire_confirmation.status = 'confirmed'
+        self.hire_confirmation.save()
+
+        commission = Commission.objects.filter(hire_confirmation=self.hire_confirmation).first()
+        assert commission is not None
+        assert commission.employer == self.employer
+        assert commission.amount == 15000
+        assert commission.rate == 10.00
+        assert commission.status == 'pending'
+
+    def test_commission_calculation_correct(self):
+        from employers.commission_models import Commission
+        self.hire_confirmation.candidate_confirmed = True
+        self.hire_confirmation.status = 'confirmed'
+        self.hire_confirmation.save()
+
+        commission = Commission.objects.get(hire_confirmation=self.hire_confirmation)
+        expected_amount = (150000 * 10.00) / 100
+        assert float(commission.amount) == expected_amount
+
+    def test_employer_views_commissions(self):
+        from employers.commission_models import Commission
+        self.hire_confirmation.candidate_confirmed = True
+        self.hire_confirmation.status = 'confirmed'
+        self.hire_confirmation.save()
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get('/api/employer/commissions')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['summary']['pending_amount'] == 15000
+        assert response.data['results'][0]['candidate_first_name'] == 'John'
+        assert response.data['results'][0]['job_title'] == 'Senior Python Developer'
+
+    def test_admin_views_all_commissions(self):
+        from employers.commission_models import Commission
+        self.hire_confirmation.candidate_confirmed = True
+        self.hire_confirmation.status = 'confirmed'
+        self.hire_confirmation.save()
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer admin-token')
+        response = self.client.get('/api/admin/commissions')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['total_amount'] == 15000
+
+    def test_filter_commissions_by_status(self):
+        from employers.commission_models import Commission
+        self.hire_confirmation.candidate_confirmed = True
+        self.hire_confirmation.status = 'confirmed'
+        self.hire_confirmation.save()
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get('/api/employer/commissions?status=pending')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['count'] == 1
+        assert response.data['results'][0]['status'] == 'pending'
+
+    def test_commission_summary_correct(self):
+        from employers.commission_models import Commission
+        self.hire_confirmation.candidate_confirmed = True
+        self.hire_confirmation.status = 'confirmed'
+        self.hire_confirmation.save()
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get('/api/employer/commissions')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['summary']['pending_amount'] == 15000
+        assert response.data['summary']['invoiced_amount'] == 0
+        assert response.data['summary']['paid_amount'] == 0
+        assert response.data['summary']['total_amount'] == 15000
+
+    def test_non_recruiter_cannot_view_commissions(self):
+        viewer_user = User.objects.create_user(
+            email='viewer@example.com',
+            username='viewer@example.com',
+            password='SecurePass123'
+        )
+        EmployerUser.objects.create(user=viewer_user, employer=self.employer, role='viewer')
+        viewer_token = SessionToken.objects.create(
+            user=viewer_user,
+            token='viewer-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer viewer-token')
+        response = self.client.get('/api/employer/commissions')
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_non_admin_cannot_view_admin_commissions(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get('/api/admin/commissions')
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_pagination_commissions(self):
+        from employers.commission_models import Commission
+        for i in range(25):
+            job = Job.objects.create(
+                employer=self.employer,
+                title=f'Job {i}',
+                description='Test',
+                location='Johannesburg',
+                salary_min=100000 + (i * 10000),
+                salary_max=200000,
+                experience_level='mid',
+                status='published'
+            )
+            app = JobApplication.objects.create(candidate=self.candidate, job=job)
+            hire = HireConfirmation.objects.create(
+                application=app,
+                employer_confirmed=True,
+                status='confirmed'
+            )
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get('/api/employer/commissions?page=1')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['results']) == 20
+        assert response.data['page'] == 1
+        assert response.data['count'] >= 25
+
+    def test_sort_commissions_by_amount(self):
+        from employers.commission_models import Commission
+        self.hire_confirmation.candidate_confirmed = True
+        self.hire_confirmation.status = 'confirmed'
+        self.hire_confirmation.save()
+
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        response = self.client.get('/api/employer/commissions?sort=-amount')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['results']) >= 1

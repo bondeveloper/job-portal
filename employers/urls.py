@@ -8,6 +8,7 @@ from .shortlist_views import ShortlistListView, ShortlistDetailView
 from .application_review_views import EmployerApplicationsListView, EmployerApplicationDetailView
 from .application_shortlist_views import ApplicationShortlistListView, ApplicationShortlistDetailView
 from .hire_confirmation_views import MarkApplicationHiredView
+from .commission_views import AdminCommissionsListView, EmployerCommissionsListView
 
 urlpatterns = [
     path('register', EmployerRegisterView.as_view(), name='employer-register'),
@@ -31,4 +32,11 @@ urlpatterns += [
     path('applications/<int:application_id>/mark-hired', MarkApplicationHiredView.as_view(), name='mark-hired'),
     path('application-shortlist', ApplicationShortlistListView.as_view(), name='application-shortlist-list'),
     path('application-shortlist/<int:shortlist_id>', ApplicationShortlistDetailView.as_view(), name='application-shortlist-detail'),
+    path('commissions', EmployerCommissionsListView.as_view(), name='commissions-list'),
 ]
+
+admin_urlpatterns = [
+    path('admin/commissions', AdminCommissionsListView.as_view(), name='admin-commissions-list'),
+]
+
+urlpatterns += admin_urlpatterns
