@@ -256,3 +256,157 @@ class TestTeamMembers:
         response = self.client.delete(f'/api/employer/team-members/{self.admin_employer_user.id}')
         
         assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+class TestJobPosting:
+    def setup_method(self):
+        from profiles.skill_models import Skill
+        self.client = APIClient()
+        self.admin_user = User.objects.create_user(
+            email='admin@example.com',
+            username='admin@example.com',
+            password='SecurePass123'
+        )
+        self.recruiter_user = User.objects.create_user(
+            email='recruiter@example.com',
+            username='recruiter@example.com',
+            password='SecurePass123'
+        )
+        self.viewer_user = User.objects.create_user(
+            email='viewer@example.com',
+            username='viewer@example.com',
+            password='SecurePass123'
+        )
+        self.employer = Employer.objects.create(
+            name='TechCorp',
+            location='Johannesburg'
+        )
+        EmployerUser.objects.create(user=self.admin_user, employer=self.employer, role='admin')
+        EmployerUser.objects.create(user=self.recruiter_user, employer=self.employer, role='recruiter')
+        EmployerUser.objects.create(user=self.viewer_user, employer=self.employer, role='viewer')
+
+        self.admin_token = SessionToken.objects.create(
+            user=self.admin_user,
+            token='admin-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+        self.recruiter_token = SessionToken.objects.create(
+            user=self.recruiter_user,
+            token='recruiter-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+        self.viewer_token = SessionToken.objects.create(
+            user=self.viewer_user,
+            token='viewer-token',
+            expires_at='2099-12-31T23:59:59Z'
+        )
+
+        self.python_skill = Skill.objects.create(name='Python')
+        self.react_skill = Skill.objects.create(name='React')
+
+    def test_create_job_as_recruiter(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        data = {
+            'title': 'Senior Python Developer',
+            'description': 'We are looking for a senior Python developer',
+            'location': 'Johannesburg',
+            'salary_min': 150000,
+            'salary_max': 250000,
+            'experience_level': 'senior',
+            'required_skill_ids': [self.python_skill.id]
+        }
+        response = self.client.post('/api/employer/jobs', data, format='json')
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['title'] == 'Senior Python Developer'
+        assert response.data['status'] == 'draft'
+        from .job_models import Job
+        assert Job.objects.filter(title='Senior Python Developer').exists()
+
+    def test_create_job_as_viewer_denied(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer viewer-token')
+        data = {
+            'title': 'Senior Python Developer',
+            'description': 'We are looking for a senior Python developer',
+            'location': 'Johannesburg',
+            'salary_min': 150000,
+            'salary_max': 250000,
+            'experience_level': 'senior'
+        }
+        response = self.client.post('/api/employer/jobs', data, format='json')
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_create_job_invalid_salary(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        data = {
+            'title': 'Senior Python Developer',
+            'description': 'We are looking for a senior Python developer',
+            'location': 'Johannesburg',
+            'salary_min': 250000,
+            'salary_max': 150000,
+            'experience_level': 'senior'
+        }
+        response = self.client.post('/api/employer/jobs', data, format='json')
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_list_employer_jobs(self):
+        from .job_models import Job
+        Job.objects.create(
+            employer=self.employer,
+            title='Python Developer',
+            description='Looking for a Python dev',
+            location='Johannesburg',
+            salary_min=100000,
+            salary_max=200000,
+            experience_level='mid',
+            status='draft'
+        )
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer admin-token')
+        response = self.client.get('/api/employer/jobs')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]['title'] == 'Python Developer'
+
+    def test_get_job_detail(self):
+        from .job_models import Job
+        job = Job.objects.create(
+            employer=self.employer,
+            title='Python Developer',
+            description='Looking for a Python dev',
+            location='Johannesburg',
+            salary_min=100000,
+            salary_max=200000,
+            experience_level='mid',
+            status='draft'
+        )
+        response = self.client.get(f'/api/employer/jobs/{job.id}')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['title'] == 'Python Developer'
+
+    def test_update_job_as_recruiter(self):
+        from .job_models import Job
+        job = Job.objects.create(
+            employer=self.employer,
+            title='Python Developer',
+            description='Looking for a Python dev',
+            location='Johannesburg',
+            salary_min=100000,
+            salary_max=200000,
+            experience_level='mid',
+            status='draft'
+        )
+        self.client.credentials(HTTP_AUTHORIZATION='Bearer recruiter-token')
+        data = {
+            'title': 'Senior Python Developer',
+            'salary_min': 150000
+        }
+        response = self.client.patch(f'/api/employer/jobs/{job.id}', data, format='json')
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['title'] == 'Senior Python Developer'
+        assert response.data['salary_min'] == 150000
