@@ -1,0 +1,16 @@
+PREDEFINED_SKILLS = [
+    'Python', 'JavaScript', 'TypeScript', 'Java', 'C++', 'C#', 'Go', 'Rust',
+    'PHP', 'Ruby', 'Swift', 'Kotlin', 'Scala', 'R', 'MATLAB', 'SQL',
+    'React', 'Vue.js', 'Angular', 'Django', 'Flask', 'FastAPI', 'Node.js',
+    'Express.js', 'Spring', 'Laravel', 'ASP.NET', 'Rails', 'Fastify',
+    'AWS', 'Azure', 'Google Cloud', 'Docker', 'Kubernetes', 'Terraform',
+    'Git', 'Linux', 'Windows', 'macOS', 'CI/CD', 'Jenkins', 'GitLab CI',
+    'PostgreSQL', 'MySQL', 'MongoDB', 'Redis', 'Elasticsearch', 'GraphQL',
+    'REST API', 'WebSockets', 'OAuth', 'JWT', 'SSL/TLS', 'Microservices',
+    'Leadership', 'Project Management', 'Communication', 'Problem Solving',
+    'Data Analysis', 'Machine Learning', 'Deep Learning', 'NLP', 'Computer Vision',
+    'UI Design', 'UX Design', 'Figma', 'Sketch', 'Adobe XD', 'Agile', 'Scrum',
+    'JIRA', 'Trello', 'Slack', 'Salesforce', 'SAP', 'Oracle', 'Excel',
+    'Business Analysis', 'Testing', 'QA Automation', 'Selenium', 'Jest',
+    'Networking', 'Cybersecurity', 'Compliance', 'DevOps', 'System Administration',
+]
