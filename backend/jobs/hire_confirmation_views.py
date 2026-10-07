@@ -49,22 +49,20 @@ class AcceptHireView(APIView):
             try:
                 hire_confirmation = HireConfirmation.objects.get(application=application)
 
-                if hire_confirmation.candidate_confirmed:
+                # Check if candidate has already confirmed
+                if hire_confirmation.candidate_confirmed_at is not None:
                     return Response(
                         {'error': 'You have already accepted this hire offer.'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                hire_confirmation.candidate_confirmed = True
-                hire_confirmation.candidate_confirmed_at = timezone.now()
-                hire_confirmation.status = 'confirmed'
-                hire_confirmation.hire_finalized_at = timezone.now()
-                hire_confirmation.save()
+                # Candidate confirms the hire
+                hire_confirmation.candidate_confirm()
 
-                application.status = 'hired'
-                application.hired_at = timezone.now()
+                application.status = 'hired_confirmed'
                 application.save()
 
+                # Create commission record (signal will handle this)
                 serializer = HireConfirmationSerializer(hire_confirmation)
                 return Response(serializer.data, status=status.HTTP_200_OK)
             except HireConfirmation.DoesNotExist:
@@ -95,18 +93,18 @@ class DeclineHireView(APIView):
             try:
                 hire_confirmation = HireConfirmation.objects.get(application=application)
 
+                # Check if already declined
                 if hire_confirmation.status == 'declined':
                     return Response(
                         {'error': 'You have already declined this hire offer.'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                hire_confirmation.candidate_confirmed = False
-                hire_confirmation.candidate_confirmed_at = timezone.now()
                 hire_confirmation.status = 'declined'
                 hire_confirmation.save()
 
-                application.status = 'rejected'
+                application.status = 'withdrawn'
+                application.withdrawn_at = timezone.now()
                 application.save()
 
                 serializer = HireConfirmationSerializer(hire_confirmation)
