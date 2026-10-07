@@ -11,6 +11,7 @@ from .hire_confirmation_views import MarkApplicationHiredView
 from .commission_views import AdminCommissionsListView, EmployerCommissionsListView
 from .invoice_views import EmployerInvoicesListView, EmployerInvoiceDetailView, AdminInvoicesListView
 from .payment_views import InitiatePaymentView, PaymentCallbackView, EmployerPaymentsListView, AdminPaymentsListView
+from .analytics_views import RevenueAnalyticsView, CommissionMetricsView, PaymentReconciliationView, DisputeManagementView
 
 urlpatterns = [
     path('register', EmployerRegisterView.as_view(), name='employer-register'),
@@ -45,6 +46,11 @@ admin_urlpatterns = [
     path('admin/commissions', AdminCommissionsListView.as_view(), name='admin-commissions-list'),
     path('admin/invoices', AdminInvoicesListView.as_view(), name='admin-invoices-list'),
     path('admin/payments', AdminPaymentsListView.as_view(), name='admin-payments-list'),
+    path('admin/analytics/revenue', RevenueAnalyticsView.as_view(), name='revenue-analytics'),
+    path('admin/analytics/commissions', CommissionMetricsView.as_view(), name='commission-metrics'),
+    path('admin/reconciliation', PaymentReconciliationView.as_view(), name='payment-reconciliation'),
+    path('admin/disputes', DisputeManagementView.as_view(), name='disputes-list'),
+    path('admin/commissions/<int:commission_id>/dispute', DisputeManagementView.as_view(), name='mark-disputed'),
 ]
 
 webhook_urlpatterns = [
