@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -81,7 +81,27 @@ class CommissionRefundViewSet(viewsets.ModelViewSet):
         refund = self.get_object()
         if refund.status != 'requested':
             return Response({'error': 'Only requested refunds can be rejected.'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         refund.status = 'rejected'
         refund.save()
         return Response(CommissionRefundSerializer(refund).data)
+
+
+class EmployerCommissionsListView(generics.ListAPIView):
+    """List commissions for the current employer."""
+    serializer_class = CommissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        try:
+            employer_user = self.request.user.employer_user
+            return Commission.objects.filter(employer=employer_user.employer)
+        except:
+            return Commission.objects.none()
+
+
+class AdminCommissionsListView(generics.ListAPIView):
+    """List all commissions (admin only)."""
+    queryset = Commission.objects.all()
+    serializer_class = CommissionSerializer
+    permission_classes = [IsAuthenticated]

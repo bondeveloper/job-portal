@@ -9,7 +9,7 @@ class Availability(models.Model):
         ('contract', 'Contract'),
     ]
 
-    profile = models.OneToOneField(CandidateProfile, on_delete=models.CASCADE, related_name='availability')
+    profile = models.OneToOneField(CandidateProfile, on_delete=models.CASCADE, related_name='availability_details')
     available_from_month = models.IntegerField()  # 1-12
     available_from_year = models.IntegerField()
     employment_type = models.CharField(max_length=20, choices=EMPLOYMENT_TYPES)

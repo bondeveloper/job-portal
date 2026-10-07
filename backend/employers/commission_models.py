@@ -56,7 +56,7 @@ class CommissionInvoice(models.Model):
         ('overdue', 'Overdue'),
     ]
 
-    employer = models.ForeignKey('Employer', on_delete=models.CASCADE, related_name='invoices')
+    employer = models.ForeignKey('Employer', on_delete=models.CASCADE, related_name='commission_invoices')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     
     # Period
