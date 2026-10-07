@@ -82,11 +82,15 @@ Candidates browse and search job listings by: title, location, skills required, 
 
 ---
 
-## Terms Under Review (Awaiting Clarification)
+## Architectural Decisions (ADRs)
 
-The following need stress-testing with edge cases:
+See `/docs/adr/` for detailed architectural decision records:
 
-- **Off-platform hiring**: Nothing prevents a Candidate and Employer from agreeing to hire off-platform (e.g., via email). Does this defraud the Platform? Needs a policy.
-- **Multiple applications**: Can one Candidate apply to multiple jobs at the same Employer? Yes, but is there a limit?
-- **Job deactivation**: If an Employer unpublishes a Job before hire confirmation, what happens to pending applications?
-- **Hire without shortlist**: Can an Employer hire a Candidate without shortlisting first (direct hire)? Or must all hires come from applications?
+- **[ADR 0001: Profile-as-CV](../docs/adr/0001-profile-as-cv.md)** — Candidates provide structured profile data (skills, work history, education) instead of uploading CV files. Supporting documents (cover letter, portfolio) are optional supplements.
+
+- **[ADR 0002: Mutual Hire Confirmation](../docs/adr/0002-mutual-hire-confirmation-triggers-commission.md)** — Hire is confirmed and commission is triggered only when both Employer and Candidate have mutually agreed. Prevents disputes and ensures fair treatment.
+
+## Policy Decisions (To Be Determined)
+
+- **Off-platform hiring**: Platform cannot prevent Candidates and Employers from hiring outside the platform. Requires Terms of Service clause and enforcement strategy (flagging, account suspension for repeat abuse).
+- **Dispute resolution**: How long can disputes be open? What evidence is needed to prove a hire was made or terminated early?
