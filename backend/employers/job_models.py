@@ -21,12 +21,13 @@ class Job(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField()
     location = models.CharField(max_length=255)
-    salary_min = models.IntegerField(help_text='Minimum salary in ZAR')
-    salary_max = models.IntegerField(help_text='Maximum salary in ZAR')
+    salary_min = models.IntegerField(help_text='Minimum salary in GBP (£)')
+    salary_max = models.IntegerField(help_text='Maximum salary in GBP (£)')
     experience_level = models.CharField(max_length=20, choices=EXPERIENCE_LEVEL_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']
